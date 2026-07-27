@@ -1,33 +1,47 @@
-name: Performance Triage Pipeline
+name: JMeter Performance Test
 
 on: workflow_dispatch
 
 jobs:
-  triage:
+  performance-test:
     runs-on: ubuntu-latest
     steps:
       - name: Get the code and files
         uses: actions/checkout@v4
 
-      - name: Confirm the results file is there
-        run: |
-          echo "Files in this repo:"
-          ls
-          echo "First 5 lines of the JMeter results:"
-          head -5 result1.jtl
+      - name: Install Java (JMeter needs it)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Simulate Claude triage (stand-in for real 'claude -p' call)
+      - name: Install JMeter
         run: |
-          echo '{"overall_verdict":"fail","flagged_transactions":[],"narrative_summary":"All transactions under 2000ms p95 threshold. Baseline healthy."}' > triage_result.json
-          cat triage_result.json
+          wget https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
+          tar -xzf apache-jmeter-5.6.3.tgz
 
-      - name: Gate the build on severity
+      - name: Run JMeter test
         run: |
-          verdict=$(cat triage_result.json | grep -o '"overall_verdict":"[a-z]*"' | cut -d'"' -f4)
-          echo "Verdict was: $verdict"
-          if [ "$verdict" = "fail" ]; then
-            echo "Performance triage FAILED — stopping the pipeline"
+          apache-jmeter-5.6.3/bin/jmeter -n -t Demo_001.jmx -l result1.jtl -e -o html-report
+
+      - name: Check error rate and fail build if too high
+        run: |
+          total=$(tail -n +2 result1.jtl | wc -l)
+          failed=$(tail -n +2 result1.jtl | awk -F',' '$8=="false"' | wc -l)
+          error_rate=$(( failed * 100 / total ))
+          echo "Total requests: $total"
+          echo "Failed requests: $failed"
+          echo "Error rate: $error_rate%"
+          if [ "$error_rate" -gt 5 ]; then
+            echo "Error rate exceeds 5% threshold — failing build"
             exit 1
-          else
-            echo "Performance triage passed — continuing"
           fi
+
+      - name: Upload results and HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-results
+          path: |
+            result1.jtl
+            html-report/
