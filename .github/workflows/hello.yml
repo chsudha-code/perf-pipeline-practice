@@ -18,7 +18,7 @@ jobs:
 
       - name: Simulate Claude triage (stand-in for real 'claude -p' call)
         run: |
-          echo '{"overall_verdict":"pass","flagged_transactions":[],"narrative_summary":"All transactions under 2000ms p95 threshold. Baseline healthy."}' > triage_result.json
+          echo '{"overall_verdict":"fail","flagged_transactions":[],"narrative_summary":"All transactions under 2000ms p95 threshold. Baseline healthy."}' > triage_result.json
           cat triage_result.json
 
       - name: Gate the build on severity
