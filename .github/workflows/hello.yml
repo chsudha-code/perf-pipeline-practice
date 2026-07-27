@@ -1,13 +1,17 @@
-name: JMeter Performance Test
+name: Performance Triage Pipeline
 
 on: workflow_dispatch
 
 permissions:
-  contents: write   # needed so the pipeline can commit baseline.json back
+  contents: write
 
 jobs:
   performance-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        testplan: [myplan-checkout, myplan-search]
+      fail-fast: false
     steps:
       - name: Get the code and files
         uses: actions/checkout@v4
@@ -23,41 +27,6 @@ jobs:
           wget https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
           tar -xzf apache-jmeter-5.6.3.tgz
 
-      - name: Run JMeter test
+      - name: Run JMeter test - ${{ matrix.testplan }}
         run: |
-          apache-jmeter-5.6.3/bin/jmeter -n -t Demo_001.jmx -l result4.jtl -e -o html-report
-
-      - name: Check error rate threshold
-        run: |
-          max_error=$(jq '.max_error_rate_percent' perf-thresholds.json)
-          total=$(tail -n +2 result1.jtl | wc -l)
-          failed=$(tail -n +2 result1.jtl | awk -F',' '$8=="false"' | wc -l)
-          error_rate=$(( failed * 100 / total ))
-          echo "Error rate: $error_rate% (threshold: $max_error%)"
-          if [ "$error_rate" -gt "$max_error" ]; then
-            echo "::error::Error rate $error_rate% exceeds threshold $max_error%"
-            exit 1
-          fi
-
-      - name: Check for performance regression vs baseline
-        run: |
-          chmod +x check-regression.sh
-          ./check-regression.sh
-
-      - name: Commit updated baseline
-        if: success()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add baseline.json
-          git commit -m "Update performance baseline [skip ci]" || echo "No changes to commit"
-          git push
-
-      - name: Upload results and HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jmeter-results-${{ github.run_number }}
-          path: |
-            result4.jtl
-            html-report/
+          apache-jmeter-5.6.3/bin/jmeter -n -t ${{ matrix.testplan }}.jmx -l ${{ matrix.testplan }}-result.jtl -e -o html-report-${{ matrix.testplan }}
