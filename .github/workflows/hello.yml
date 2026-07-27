@@ -1,13 +1,33 @@
-name: My First Pipeline
+name: Performance Triage Pipeline
 
 on: workflow_dispatch
 
 jobs:
-  say-hello:
+  triage:
     runs-on: ubuntu-latest
     steps:
-      - name: Say hello
-        run: echo "Hello from GitHub's server, not your laptop!"
+      - name: Get the code and files
+        uses: actions/checkout@v4
 
-      - name: Show the date
-        run: date
+      - name: Confirm the results file is there
+        run: |
+          echo "Files in this repo:"
+          ls
+          echo "First 5 lines of the JMeter results:"
+          head -5 result1.jtl
+
+      - name: Simulate Claude triage (stand-in for real 'claude -p' call)
+        run: |
+          echo '{"overall_verdict":"pass","flagged_transactions":[],"narrative_summary":"All transactions under 2000ms p95 threshold. Baseline healthy."}' > triage_result.json
+          cat triage_result.json
+
+      - name: Gate the build on severity
+        run: |
+          verdict=$(cat triage_result.json | grep -o '"overall_verdict":"[a-z]*"' | cut -d'"' -f4)
+          echo "Verdict was: $verdict"
+          if [ "$verdict" = "fail" ]; then
+            echo "Performance triage FAILED — stopping the pipeline"
+            exit 1
+          else
+            echo "Performance triage passed — continuing"
+          fi
